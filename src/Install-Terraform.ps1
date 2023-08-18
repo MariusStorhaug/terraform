@@ -42,7 +42,7 @@
 param (
     [Parameter()]
     [ValidateSet('AllUsers', 'CurrentUser')]
-    [string]$Scope = 'CurrentUser'
+    [string] $Scope = 'CurrentUser'
 )
 $release = Invoke-RestMethod 'https://api.github.com/repos/hashicorp/terraform/releases/latest'
 $version = ($release.tag_name).Replace('v', '')
