@@ -41,11 +41,25 @@
 [CmdletBinding()]
 param (
     [Parameter()]
-    [ValidateSet('AllUsers', 'CurrentUser')]
-    [string] $Scope = 'CurrentUser'
+    [ValidateSet(
+        'AllUsers',
+        'CurrentUser'
+    )]
+    [string] $Scope = 'CurrentUser',
+
+    [Parameter(
+        ValueFromPipeline,
+        ValueFromPipelineByPropertyName
+    )]
+    [ValidateScript(
+        {
+            Get-TerraformReleases
+        }
+    )]
+    $Version = (Get-TerraformReleases -Latest)
 )
-$release = Invoke-RestMethod 'https://api.github.com/repos/hashicorp/terraform/releases/latest'
-$version = ($release.tag_name).Replace('v', '')
+
+$Version = Get-TerraformReleases -Latest -AllowPrerelease
 
 if ($Scope -eq 'AllUsers') {
     $DownloadPath = $env:TEMP
@@ -55,16 +69,20 @@ if ($Scope -eq 'AllUsers') {
     $InstallPath = "$env:USERPROFILE/.terraform"
 }
 
-Start-BitsTransfer -Source "https://releases.hashicorp.com/terraform/$version/terraform_$version`_windows_amd64.zip" -Destination "$DownloadPath/terraform.zip"
-Get-Item "$DownloadPath/terraform.zip"
-Get-Item "$DownloadPath/terraform.zip" | Expand-Archive -DestinationPath $InstallPath -Force -PassThru
+Start-BitsTransfer -Source "https://releases.hashicorp.com/terraform/$Version/terraform_$Version`_windows_amd64.zip" -Destination "$DownloadPath/terraform.zip"
+Get-Item "$DownloadPath/terraform.zip" | Expand-Archive -DestinationPath $InstallPath -Force
 Get-Item "$DownloadPath/terraform.zip" | Remove-Item -Force
 $env:PATH += ";$InstallPath"
 
 if ($Scope -eq 'AllUsers') {
-    [Environment]::SetEnvironmentVariable('PATH', $env:PATH, [EnvironmentVariableTarget]::Machine)
+    $PATH = [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine)
+    $PATH += ";$InstallPath"
+    [System.Environment]::SetEnvironmentVariable('PATH', $PATH, [System.EnvironmentVariableTarget]::Machine)
 } else {
-    [Environment]::SetEnvironmentVariable('PATH', $env:PATH, [EnvironmentVariableTarget]::User)
+    $PATH = [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::User)
+    $PATH += ";$InstallPath"
+    [System.Environment]::SetEnvironmentVariable('PATH', $PATH, [System.EnvironmentVariableTarget]::User)
 }
 
 terraform --version
+
