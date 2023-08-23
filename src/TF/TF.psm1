@@ -164,4 +164,4 @@ function Uninstall-Terraform {
     }
 }
 
-Export-ModuleMember -Function '*' -Cmdlet '*' -Alias '*' -Variable '*'
+Export-ModuleMember -Function '*' -Cmdlet '*' -Variable '*' -Alias '*'
