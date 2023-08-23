@@ -86,4 +86,3 @@ function Test-TerraformAddedInPath {
     $inMachinePAth = $Path -in ([System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::Machine) | Split-String -Separator ';')
     [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::User)
 }
-
