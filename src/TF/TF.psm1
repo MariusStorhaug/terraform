@@ -5,7 +5,7 @@
             ValueFromPipelineByPropertyName
         )]
         [Alias('FullName')]
-        [string[]] $Path = 'terraform'
+        [string[]] $Path = (Find-Terraform)
     )
 
     begin {
@@ -24,21 +24,42 @@
     }
 }
 
-function Get-TerraformReleases {
-    param (
-        [switch] $Latest,
-        [switch] $AllowPrerelease
-    )
+function Find-Terraform {
+    [OutputType([string[]])]
+    [CmdletBinding()]
+    param ()
+    $terraformPaths = @()
 
-    $semverVersionPattern = [regex]'\d+\.\d+\.\d+(-\w+)?'
+    $drives = Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.FileSystem -eq 'NTFS' -and $null -ne $_.DriveLetter }
+    $driveLetters = $drives.driveletter
+
+    foreach ($driveLetter in $driveLetters) {
+        $terraformPaths = Get-ChildItem -Path "$driveLetter`:\" -Filter terraform.exe -Recurse -ErrorAction SilentlyContinue -Force | Select-Object -ExpandProperty FullName
+    }
+
+    if ($terraformPaths.count -eq 0) {
+        Write-Error 'No terraform.exe files found on the system'
+        return
+    }
+
+    return $terraformPaths
+}
+
+function Get-TerraformVersion {
+    [OutputType([string[]])]
+    [CmdletBinding()]
+    param ()
+
+    $versionPattern = [regex]'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
 
     $releases = Invoke-RestMethod 'https://api.github.com/repos/hashicorp/terraform/releases'
 
-    $releaseTagNames = $releases.tag_name
-    $releaseVersions = $releaseTagNames | ForEach-Object { $semverVersionPattern.Match($_).Value } | Sort-Object
+    $releaseTags = $releases.tag_name
+    $releaseVersions = $releaseTags | Where-Object { $_ -match $versionPattern } | Sort-Object
 
-    if (-not $AllowPrerelease) {
-        $releaseVersions = $releaseVersions | Where-Object { $_ -notlike '*-*' }
+    if ($releaseVersions.Count -eq 0) {
+        Write-Error "No releases found for version [$Version]"
+        return
     }
 
     if ($Latest) {
@@ -48,15 +69,39 @@ function Get-TerraformReleases {
     return $releaseVersions
 }
 
-function Find-Terraform {
-    # Get all formatted data drives on the current system
-    $drives = Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.FileSystem -eq 'NTFS' -and $_.DriveLetter -ne $null }
-    $driveLetters = $drives.driveletter
+function Get-TerraformReleases {
+    param (
+        [Parameter()]
+        [switch] $Latest,
 
-    # For each drive letter, find the terraform.exe file
-    foreach ($driveLetter in $driveLetters) {
-        Get-ChildItem -Path "$driveLetter`:\" -Filter terraform.exe -Recurse -ErrorAction SilentlyContinue -Force | Select-Object -ExpandProperty FullName
+        [Parameter()]
+        [switch] $AllowPrerelease,
+
+        [Parameter()]
+        [SupportsWildcards()]
+        [string] $Version = '*'
+    )
+
+    $semverVersionPattern = [regex]'\d+\.\d+\.\d+$'
+    if ($AllowPrerelease) {
+        $semverVersionPattern = [regex]'\d+\.\d+\.\d+(-\w+)?'
     }
+
+    $releases = Invoke-RestMethod 'https://api.github.com/repos/hashicorp/terraform/releases'
+
+    $releaseTags = $releases.tag_name
+    $releaseVersions = $releaseTags | Where-Object { $_ -match $semverVersionPattern -and $_ -like "$Version" } | Sort-Object
+
+    if ($releaseVersions.Count -eq 0) {
+        Write-Error "No releases found for version [$Version]"
+        return
+    }
+
+    if ($Latest) {
+        return $releaseVersions[-1]
+    }
+
+    return $releaseVersions
 }
 
 function Install-xTerraform {
@@ -87,10 +132,6 @@ function Test-TerraformAddedInPath {
     [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::User)
 }
 
-<#
-.DESCRIPTION
-    Installs Terraform
-#>
 function Install-Terraform {
     [CmdletBinding()]
     param (
